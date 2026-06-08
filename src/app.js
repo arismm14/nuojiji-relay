@@ -269,27 +269,16 @@ export function createApp() {
             result.avatarsError = String(e?.message || e);
         }
 
+        // ⚠️ test:true「真发测试推送」已停用。
+        //    现象：有客户端(疑似旧版本/后台保活循环)每 5~10 分钟反复调本端点 test:true，
+        //    每次对每条订阅各发一条「推送链路自检(带头像)」→ 用户被自检通知轰炸。
+        //    诊断本身只需「查订阅是否存在 + 头像 KV 是否在」，不必真发通知。
+        //    故无条件不再 dispatch，只回订阅清单 + 头像状态；UI 拿不到 dispatch 时显示「已停用真发」。
         if (test && subs.length) {
-            // 🔬 带上第一个有头像的 pair 的 avatarUrl，真正测「头像推送」整条链路。
-            const firstAvatar = (result.avatars || []).find(a => a.avatarUrl);
-            const fullUrl = firstAvatar?.avatarUrl
-                ? (firstAvatar.avatarUrl.startsWith('http') ? firstAvatar.avatarUrl : `${new URL(c.req.url).origin}${firstAvatar.avatarUrl}`)
-                : null;
-            const payload = {
-                title: firstAvatar?.charName || '糯叽机', body: '推送链路自检（带头像）', kind: 'relay-diag',
-                avatarUrl: fullUrl, senderName: firstAvatar?.charName || '糯叽机',
-                conversationId: firstAvatar ? `${inboxId}_${firstAvatar.charId}` : null,
-                mutableContent: true,
-            };
-            result.testPayloadAvatarUrl = fullUrl;
-            result.dispatch = [];
-            for (const s of subs) {
-                let res;
-                try { res = await dispatchPush(c.env, s, payload); }
-                catch (e) { res = { ok: false, reason: e?.message || String(e) }; }
-                result.dispatch.push({ channel: s?.channel || 'web', ok: !!res?.ok, gone: !!res?.gone, reason: res?.reason || null });
-                if (res?.gone) await sub.remove(inboxId, s);
-            }
+            result.dispatch = subs.map((s) => ({
+                channel: s?.channel || 'web', ok: null, gone: false,
+                reason: '测试推送已停用(防自检通知轰炸)，本项仅列出订阅是否存在',
+            }));
         }
         return c.json(result);
     });
